@@ -68,7 +68,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             <TableHead className="w-[50px]">
               <Checkbox
                 checked={isAllSelectedOnPage}
-                onCheckedChange={handleSelectAll}
+                // Radix reports "indeterminate" as well as booleans; only an
+                // explicit check selects the page.
+                onCheckedChange={(checked) => handleSelectAll(checked === true)}
                 aria-label="Select all transactions on current page"
               />
             </TableHead>

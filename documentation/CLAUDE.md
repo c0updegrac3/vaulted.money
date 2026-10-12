@@ -146,6 +146,9 @@ In jsdom 30.1.0, removing a focused element (which Testing Library's cleanup doe
 **Assert behaviour, not jsdom internals**
 jsdom's focus bookkeeping changes between patch releases. `document.hasFocus()` returned `false` after `blur()` in 30.1.0 but `true` in 30.1.1, which broke a test that asserted on it. Assert what a user would observe (`document.activeElement`, whether a menu opened) rather than jsdom-specific state.
 
+**Type Radix checkbox handlers as `CheckedState`**
+`@radix-ui/react-checkbox` 1.4 declares `onCheckedChange` as a property instead of a method, so TypeScript now checks its parameter strictly. A handler typed `(checked: boolean) => void` fails `tsc` (and so `pnpm build`), because the callback can also receive `"indeterminate"`. Accept the `CheckedState` value and convert it explicitly, e.g. `(checked) => onSelect(checked === true)`.
+
 **Commit the regenerated acknowledgments**
 `pnpm build` and the test suite regenerate `src/data/acknowledgments.generated.ts` from installed versions. Commit the regenerated file along with the dependency bump so the Acknowledgments page lists the versions that actually ship.
 
