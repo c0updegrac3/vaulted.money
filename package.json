@@ -31,8 +31,8 @@
   "dependencies": {
     "@capacitor/core": "^8.5.3",
     "@capacitor/filesystem": "^8.1.5",
-    "@capawesome/capacitor-file-picker": "^8.0.4",
-    "@hookform/resolvers": "^5.8.0",
+    "@capawesome/capacitor-file-picker": "^8.1.1",
+    "@hookform/resolvers": "^6.0.0",
     "@radix-ui/react-alert-dialog": "^1.1.18",
     "@radix-ui/react-checkbox": "^1.1.1",
     "@radix-ui/react-collapsible": "^1.1.0",
