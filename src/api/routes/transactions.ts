@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { db } from "@/lib/dexieDB";
 import type { Transaction } from "@/types/dataProvider";
 import {
   badRequest,
@@ -231,7 +230,8 @@ export const transactionRoutes: RouteDef[] = [
         currency: to.currency || ledger.currency,
       });
       await dp.linkTransactionsAsTransfer(outgoing.id, incoming.id);
-      const transferId = (await db.transactions.get(outgoing.id))?.transfer_id;
+      const transferId = (await dp.getTransactionById(outgoing.id))
+        ?.transfer_id;
       return json({ transfer_id: transferId, outgoing, incoming }, 201);
     },
   },
@@ -241,12 +241,11 @@ export const transactionRoutes: RouteDef[] = [
     summary: "Delete both legs of a transfer",
     handler: async ({ params, services }) => {
       await requireLedger(services, params.ledgerId);
-      const legs = await db.transactions
-        .where("transfer_id")
-        .equals(params.transferId)
-        .and((t) => t.user_id === params.ledgerId)
-        .count();
-      if (legs === 0) throw notFound(`Transfer "${params.transferId}"`);
+      const legs = await services.dataProvider.getTransactionsByTransferId(
+        params.transferId,
+        params.ledgerId,
+      );
+      if (legs.length === 0) throw notFound(`Transfer "${params.transferId}"`);
       await services.dataProvider.deleteTransactionByTransferId(
         params.transferId,
       );
@@ -260,7 +259,11 @@ export const transactionRoutes: RouteDef[] = [
     handler: async ({ params, services }) => {
       await requireLedger(services, params.ledgerId);
       return json(
-        await getTransactionInLedger(params.ledgerId, params.transactionId),
+        await getTransactionInLedger(
+          services.dataProvider,
+          params.ledgerId,
+          params.transactionId,
+        ),
       );
     },
   },
@@ -272,6 +275,7 @@ export const transactionRoutes: RouteDef[] = [
     handler: async ({ params, body, services }) => {
       await requireLedger(services, params.ledgerId);
       const existing = await getTransactionInLedger(
+        services.dataProvider,
         params.ledgerId,
         params.transactionId,
       );
@@ -307,7 +311,11 @@ export const transactionRoutes: RouteDef[] = [
     summary: "Delete a transaction",
     handler: async ({ params, services }) => {
       await requireLedger(services, params.ledgerId);
-      await getTransactionInLedger(params.ledgerId, params.transactionId);
+      await getTransactionInLedger(
+        services.dataProvider,
+        params.ledgerId,
+        params.transactionId,
+      );
       await services.dataProvider.deleteTransaction(params.transactionId);
       return noContent();
     },

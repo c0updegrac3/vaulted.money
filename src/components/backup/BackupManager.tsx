@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { showSuccess, showError } from "@/utils/toast";
-import { db } from "@/lib/dexieDB";
 import { useDataProvider } from "@/context/DataProviderContext";
 import { generateBackupData } from "@/utils/backupUtils";
 import { encryptData } from "@/utils/crypto";
@@ -12,10 +11,7 @@ const BackupManager = () => {
   useEffect(() => {
     const checkBackups = async () => {
       const now = new Date();
-      const backups = await db.backup_configs
-        .where("nextBackup")
-        .belowOrEqual(now.toISOString())
-        .toArray();
+      const backups = await dataProvider.getDueBackupConfigs(now.toISOString());
 
       for (const backup of backups) {
         if (!backup.isActive || (!backup.directoryHandle && !backup.path))
@@ -57,12 +53,16 @@ const BackupManager = () => {
             showError(
               `Backup folder not found for config ${backup.id}. Backup disabled.`,
             );
-            await db.backup_configs.update(backup.id, { isActive: false });
+            await dataProvider.updateBackupConfig(backup.id, {
+              isActive: false,
+            });
           } else if (error.name === "NotAllowedError") {
             showError(
               `Permission denied for backup config ${backup.id}. Backup disabled.`,
             );
-            await db.backup_configs.update(backup.id, { isActive: false });
+            await dataProvider.updateBackupConfig(backup.id, {
+              isActive: false,
+            });
           }
         }
 
@@ -77,7 +77,7 @@ const BackupManager = () => {
           updatePayload.lastBackup = now.toISOString();
         }
 
-        await db.backup_configs.update(backup.id, updatePayload);
+        await dataProvider.updateBackupConfig(backup.id, updatePayload);
       }
     };
 

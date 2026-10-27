@@ -122,6 +122,13 @@ export interface BackupConfig {
   passwordHash?: string;
 }
 
+export class DataProviderConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DataProviderConflictError";
+  }
+}
+
 export interface AIProvider {
   id: string;
   name: string;
@@ -134,7 +141,6 @@ export interface AIProvider {
 
 export interface DataProvider {
   // Ledgers
-  // Ledgers
   getLedgers(): Promise<Ledger[]>;
   addLedger(
     ledger: Omit<Ledger, "id" | "created_at" | "last_accessed">,
@@ -144,6 +150,11 @@ export interface DataProvider {
 
   // Transactions
   getTransactions(ledgerId: string): Promise<Transaction[]>;
+  getTransactionById(id: string): Promise<Transaction | undefined>;
+  getTransactionsByTransferId(
+    transferId: string,
+    ledgerId?: string,
+  ): Promise<Transaction[]>;
   addTransaction(
     transaction: Omit<Transaction, "id" | "created_at">,
   ): Promise<Transaction>;
@@ -160,6 +171,9 @@ export interface DataProvider {
 
   // Scheduled Transactions
   getScheduledTransactions(ledgerId: string): Promise<ScheduledTransaction[]>;
+  getScheduledTransactionById(
+    id: string,
+  ): Promise<ScheduledTransaction | undefined>;
   addScheduledTransaction(
     transaction: Omit<ScheduledTransaction, "id" | "created_at">,
   ): Promise<ScheduledTransaction>;
@@ -182,8 +196,34 @@ export interface DataProvider {
   ): Promise<string | null>;
   checkIfPayeeIsAccount(name: string, ledgerId: string): Promise<boolean>;
   getAccountCurrency(accountName: string, ledgerId: string): Promise<string>;
+  getAccountById(id: string): Promise<Account | undefined>;
   getAllVendors(ledgerId: string): Promise<Vendor[]>;
   getVendorByName(name: string, ledgerId: string): Promise<Vendor | undefined>;
+  getVendorById(id: string): Promise<Vendor | undefined>;
+  updateVendorName(id: string, newName: string): Promise<void>;
+  updatePayeeDetails(
+    vendorId: string,
+    values: {
+      name: string;
+      currency?: string;
+      startingBalance?: number;
+      remarks?: string;
+      type?: Account["type"];
+      creditLimit?: number;
+    },
+  ): Promise<void>;
+  renamePayee(
+    ledgerId: string,
+    vendorId: string,
+    newName: string,
+  ): Promise<void>;
+  propagateAccountCurrency(
+    ledgerId: string,
+    accountName: string,
+    currency: string,
+  ): Promise<void>;
+  updateAccount(id: string, update: Partial<Account>): Promise<void>;
+  deleteMultiplePayees(ids: string[]): Promise<void>;
   mergePayees(
     targetName: string,
     sourceNames: string[],
@@ -200,6 +240,36 @@ export interface DataProvider {
     ledgerId: string,
   ): Promise<string | null>;
   getUserCategories(ledgerId: string): Promise<Category[]>;
+  getCategoryById(id: string): Promise<Category | undefined>;
+  renameCategory(
+    ledgerId: string,
+    categoryId: string,
+    newName: string,
+  ): Promise<void>;
+  updateSubCategoryName(
+    categoryId: string,
+    categoryName: string,
+    oldName: string,
+    newName: string,
+    ledgerId?: string,
+  ): Promise<void>;
+  deleteSubCategoryReferences(
+    categoryId: string,
+    categoryName: string,
+    subCategoryName: string,
+    ledgerId?: string,
+  ): Promise<void>;
+  renameSubCategory(
+    ledgerId: string,
+    categoryId: string,
+    subCategoryId: string,
+    newName: string,
+  ): Promise<void>;
+  deleteSubCategory(
+    ledgerId: string,
+    categoryId: string,
+    subCategoryId: string,
+  ): Promise<void>;
   getSubCategories(ledgerId: string): Promise<SubCategory[]>;
   mergeCategories(
     targetName: string,
@@ -207,6 +277,7 @@ export interface DataProvider {
     ledgerId: string,
   ): Promise<void>;
   deleteCategory(id: string): Promise<void>;
+  deleteMultipleCategories(ids: string[]): Promise<void>;
 
   // Budgets
   getBudgetsWithSpending(ledgerId: string): Promise<Budget[]>;
@@ -231,4 +302,12 @@ export interface DataProvider {
   updateAIProvider(provider: AIProvider): Promise<void>;
   deleteAIProvider(id: string): Promise<void>;
   setDefaultAIProvider(id: string): Promise<void>;
+
+  // Backup configurations
+  getBackupConfigs(): Promise<BackupConfig[]>;
+  getDueBackupConfigs(through: string): Promise<BackupConfig[]>;
+  getBackupConfig(id: string): Promise<BackupConfig | undefined>;
+  addBackupConfig(config: BackupConfig): Promise<void>;
+  updateBackupConfig(id: string, update: Partial<BackupConfig>): Promise<void>;
+  deleteBackupConfig(id: string): Promise<void>;
 }

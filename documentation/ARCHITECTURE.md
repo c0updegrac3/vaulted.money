@@ -28,6 +28,7 @@ graph TB
         Router["React Router<br/>(SPA Navigation)"]
         State["TanStack Query<br/>(State & Cache)"]
         Contexts["Context Providers<br/>(Ledger · Transactions · Filter<br/>Currency · Theme · User)"]
+        Provider["DataProvider<br/>(domain-facing data seam)"]
         DB["Dexie.js<br/>(IndexedDB Wrapper)"]
         IDB[("IndexedDB<br/>Local Storage")]
     end
@@ -35,7 +36,8 @@ graph TB
     UI --> Router
     Router --> Contexts
     Contexts --> State
-    State --> DB
+    State --> Provider
+    Provider --> DB
     DB --> IDB
 
     style Browser fill:#1a1a2e,stroke:#16213e,color:#e8e8e8
@@ -249,19 +251,27 @@ flowchart TD
 
 ### Data Flow
 
+Application code accesses persisted financial data through the `DataProvider`
+interface (`src/types/dataProvider.ts`). `LocalDataProvider` is the production
+implementation and is the only production caller that imports
+`@/lib/dexieDB`. Tests, benchmarks, and explicitly identified capture scripts
+may use Dexie directly for setup or measurement.
+
 ```mermaid
 sequenceDiagram
     participant U as 👤 User
     participant UI as React UI
     participant TQ as TanStack Query
     participant Ctx as Context Providers
+    participant DP as DataProvider
     participant Dex as Dexie.js
     participant IDB as IndexedDB
 
     U->>UI: Interact (add transaction, etc.)
     UI->>Ctx: Dispatch action
     Ctx->>TQ: Optimistic update (instant UI)
-    Ctx->>Dex: Persist data
+    Ctx->>DP: Persist domain operation
+    DP->>Dex: Persist data
     Dex->>IDB: Write to local store
     IDB-->>Dex: Confirmation
     Dex-->>TQ: Invalidate & refetch

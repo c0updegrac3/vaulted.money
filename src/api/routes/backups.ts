@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { db } from "@/lib/dexieDB";
 import { generateBackupData, processImport } from "@/utils/backupUtils";
 import { decryptData, encryptData } from "@/utils/crypto";
 import {
@@ -200,17 +199,22 @@ export const backupRoutes: RouteDef[] = [
     method: "GET",
     path: "/backups/schedules",
     summary: "List scheduled backup configurations",
-    handler: async () =>
-      json({ data: (await db.backup_configs.toArray()).map(presentSchedule) }),
+    handler: async ({ services }) =>
+      json({
+        data: (await services.dataProvider.getBackupConfigs()).map(
+          presentSchedule,
+        ),
+      }),
   },
   {
     method: "PATCH",
     path: "/backups/schedules/:scheduleId",
     summary: "Enable/disable a scheduled backup or change its frequency",
     body: schedulePatchSchema,
-    handler: async ({ params, body }) => {
+    handler: async ({ params, body, services }) => {
       const patch = parse(schedulePatchSchema, body);
-      const existing = await db.backup_configs.get(params.scheduleId);
+      const dataProvider = services.dataProvider;
+      const existing = await dataProvider.getBackupConfig(params.scheduleId);
       if (!existing) throw notFound(`Backup schedule "${params.scheduleId}"`);
       const update: Record<string, unknown> = {};
       if (patch.is_active !== undefined) update.isActive = patch.is_active;
@@ -220,19 +224,22 @@ export const backupRoutes: RouteDef[] = [
           Date.now() + patch.frequency_ms,
         ).toISOString();
       }
-      await db.backup_configs.update(existing.id, update);
-      return json(presentSchedule((await db.backup_configs.get(existing.id))!));
+      await dataProvider.updateBackupConfig(existing.id, update);
+      return json(
+        presentSchedule((await dataProvider.getBackupConfig(existing.id))!),
+      );
     },
   },
   {
     method: "DELETE",
     path: "/backups/schedules/:scheduleId",
     summary: "Delete a scheduled backup configuration",
-    handler: async ({ params }) => {
-      if (!(await db.backup_configs.get(params.scheduleId))) {
+    handler: async ({ params, services }) => {
+      const dataProvider = services.dataProvider;
+      if (!(await dataProvider.getBackupConfig(params.scheduleId))) {
         throw notFound(`Backup schedule "${params.scheduleId}"`);
       }
-      await db.backup_configs.delete(params.scheduleId);
+      await dataProvider.deleteBackupConfig(params.scheduleId);
       return noContent();
     },
   },

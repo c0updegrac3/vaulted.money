@@ -46,10 +46,43 @@ export default tseslint.config(
         {
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_"
-        }
+          caughtErrorsIgnorePattern: "^_",
+        },
       ],
       "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
+  {
+    // Production code should use DataProvider. Keep direct Dexie access in its
+    // implementation only; tests and benchmarks may use Dexie for setup/assertions.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/lib/dexieDB.ts",
+      "src/providers/LocalDataProvider.ts",
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "src/benchmarks/**",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ImportDeclaration[source.value=/dexieDB/]",
+          message:
+            "Use DataProvider instead of importing Dexie in production code.",
+        },
+        {
+          selector: "ImportExpression[source.value=/dexieDB/]",
+          message:
+            "Use DataProvider instead of dynamically importing Dexie in production code.",
+        },
+        {
+          selector:
+            "CallExpression[callee.name='require'][arguments.0.value=/dexieDB/]",
+          message:
+            "Use DataProvider instead of requiring Dexie in production code.",
+        },
+      ],
     },
   },
 );
