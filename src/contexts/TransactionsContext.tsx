@@ -5,7 +5,6 @@ import {
 } from "@/utils/transactionMaintenance";
 import { Transaction, Category, SubCategory } from "@/data/finance-data";
 import { startOfDay } from "date-fns";
-import { db } from "@/lib/dexieDB";
 import { useCurrency } from "./CurrencyContext";
 import { Payee } from "@/components/dialogs/AddEditPayeeDialog";
 // import { useUser } from './UserContext'; // Replaced by useLedger
@@ -1233,7 +1232,7 @@ export const TransactionsProvider: React.FC<{ children: React.ReactNode }> = ({
             await dataProvider.deletePayee(id);
           }
         } else if (type === "category") {
-          await db.categories.bulkDelete(ids);
+          await dataProvider.deleteMultipleCategories(ids);
         }
 
         undoStackRef.current = undoStackRef.current.filter(

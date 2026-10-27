@@ -108,7 +108,12 @@ export const vendorRoutes: RouteDef[] = [
     handler: async (ctx) => {
       const vendor = await findVendor(ctx);
       const { name } = parse(nameSchema, ctx.body);
-      await renamePayee(ctx.params.ledgerId, vendor, name);
+      await renamePayee(
+        ctx.services.dataProvider,
+        ctx.params.ledgerId,
+        vendor,
+        name,
+      );
       return json({ ...vendor, name });
     },
   },

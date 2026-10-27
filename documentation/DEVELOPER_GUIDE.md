@@ -117,6 +117,26 @@ Restart the development server or rebuild the app after changing CSP domains.
 - Async data loading uses TanStack Query where appropriate.
 - Local persistence is implemented through Dexie and IndexedDB.
 
+### DataProvider seam
+
+Production callers use the `DataProvider` interface in
+`src/types/dataProvider.ts`; `LocalDataProvider` is its current implementation.
+Keep Dexie imports and table operations inside `src/providers/LocalDataProvider.ts`
+and `src/lib/dexieDB.ts`. ESLint guards production imports, including dynamic
+imports. Direct Dexie access remains permitted in tests, benchmarks, and the
+explicit API capture script for test setup and measurement.
+
+`src/providers/dataProviderContract.ts` is the reusable behavior contract.
+Adapter-specific tests can remain alongside it when they need to inspect Dexie
+details. Run the contract through an adapter factory when adding another
+implementation.
+
+Backup-version finding (2026-10): the backup envelope writes and checks
+`schemaVersion: 8`, while `src/lib/dexieDB.ts` declares Dexie database version
+10. The envelope comments currently describe the field as manually synced to
+Dexie. This seam pass records the mismatch but deliberately does not change the
+backup version policy or import behavior; resolve that as a separate decision.
+
 ## Deployment
 
 The web build is a static SPA in `dist/`. Any static host can serve it.

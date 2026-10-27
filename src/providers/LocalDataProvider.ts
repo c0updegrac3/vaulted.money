@@ -10,6 +10,7 @@ import {
   Ledger,
   BackupConfig,
   AIProvider,
+  DataProviderConflictError,
 } from "../types/dataProvider";
 import { db } from "@/lib/dexieDB";
 import { v4 as uuidv4 } from "uuid";
@@ -65,6 +66,23 @@ export class LocalDataProvider implements DataProvider {
     }
     // Fallback for migration/empty state
     return await db.transactions.orderBy("date").reverse().toArray();
+  }
+
+  async getTransactionById(id: string): Promise<Transaction | undefined> {
+    return await db.transactions.get(id);
+  }
+
+  async getTransactionsByTransferId(
+    transferId: string,
+    ledgerId?: string,
+  ): Promise<Transaction[]> {
+    const transactions = await db.transactions
+      .where("transfer_id")
+      .equals(transferId)
+      .toArray();
+    return ledgerId
+      ? transactions.filter((transaction) => transaction.user_id === ledgerId)
+      : transactions;
   }
 
   async addTransaction(
@@ -183,6 +201,12 @@ export class LocalDataProvider implements DataProvider {
       .equals(ledgerId)
       .reverse()
       .sortBy("date");
+  }
+
+  async getScheduledTransactionById(
+    id: string,
+  ): Promise<ScheduledTransaction | undefined> {
+    return await db.scheduled_transactions.get(id);
   }
 
   async addScheduledTransaction(
@@ -351,6 +375,154 @@ export class LocalDataProvider implements DataProvider {
     return await db.vendors.where({ user_id: ledgerId, name: name }).first();
   }
 
+  async getVendorById(id: string): Promise<Vendor | undefined> {
+    return await db.vendors.get(id);
+  }
+
+  async updateVendorName(id: string, newName: string): Promise<void> {
+    await db.vendors.update(id, { name: newName });
+  }
+
+  async updatePayeeDetails(
+    vendorId: string,
+    values: {
+      name: string;
+      currency?: string;
+      startingBalance?: number;
+      remarks?: string;
+      type?: Account["type"];
+      creditLimit?: number;
+    },
+  ): Promise<void> {
+    const vendor = await db.vendors.get(vendorId);
+    if (!vendor) throw new Error(`Payee "${vendorId}" was not found`);
+
+    if (vendor.name !== values.name) {
+      await db.vendors.update(vendorId, { name: values.name });
+      await db.transactions
+        .where("vendor")
+        .equals(vendor.name)
+        .modify({ vendor: values.name });
+      await db.transactions
+        .where("account")
+        .equals(vendor.name)
+        .modify({ account: values.name });
+      await db.scheduled_transactions
+        .where("vendor")
+        .equals(vendor.name)
+        .modify({ vendor: values.name });
+      await db.scheduled_transactions
+        .where("account")
+        .equals(vendor.name)
+        .modify({ account: values.name });
+    }
+
+    if (vendor.is_account) {
+      const currency = values.currency || "EUR";
+      await db.transactions
+        .where("account")
+        .equals(values.name)
+        .modify({ currency });
+      await db.scheduled_transactions
+        .where("account")
+        .equals(values.name)
+        .modify({ currency });
+
+      if (vendor.account_id) {
+        await this.updateAccount(vendor.account_id, {
+          currency: values.currency,
+          starting_balance: values.startingBalance || 0,
+          remarks: values.remarks || "",
+          type: values.type,
+          credit_limit: values.creditLimit,
+        });
+      }
+    }
+  }
+
+  async renamePayee(
+    ledgerId: string,
+    vendorId: string,
+    newName: string,
+  ): Promise<void> {
+    const vendor = await db.vendors.get(vendorId);
+    if (!vendor) throw new Error(`Payee "${vendorId}" was not found`);
+    const oldName = vendor.name;
+    if (oldName === newName) return;
+
+    const clash = await db.vendors
+      .where("[user_id+name]")
+      .equals([ledgerId, newName])
+      .first();
+    if (clash && clash.id !== vendorId) {
+      throw new DataProviderConflictError(
+        `A vendor or account named "${newName}" already exists`,
+      );
+    }
+
+    await db.vendors.update(vendorId, { name: newName });
+    const inLedger = <T extends { user_id?: string }>(row: T) =>
+      row.user_id === ledgerId;
+
+    await db.transactions
+      .where("vendor")
+      .equals(oldName)
+      .and(inLedger)
+      .modify({ vendor: newName });
+    await db.transactions
+      .where("account")
+      .equals(oldName)
+      .and(inLedger)
+      .modify({ account: newName });
+    await db.scheduled_transactions
+      .where("vendor")
+      .equals(oldName)
+      .and(inLedger)
+      .modify({ vendor: newName });
+    await db.scheduled_transactions
+      .where("account")
+      .equals(oldName)
+      .and(inLedger)
+      .modify({ account: newName });
+    await db.budgets
+      .where("user_id")
+      .equals(ledgerId)
+      .and(
+        (budget) =>
+          (budget.budget_scope === "account" ||
+            budget.budget_scope === "vendor") &&
+          budget.budget_scope_name === oldName,
+      )
+      .modify({ budget_scope_name: newName });
+  }
+
+  async propagateAccountCurrency(
+    ledgerId: string,
+    accountName: string,
+    currency: string,
+  ): Promise<void> {
+    const inLedger = <T extends { user_id?: string }>(row: T) =>
+      row.user_id === ledgerId;
+    await db.transactions
+      .where("account")
+      .equals(accountName)
+      .and(inLedger)
+      .modify({ currency });
+    await db.scheduled_transactions
+      .where("account")
+      .equals(accountName)
+      .and(inLedger)
+      .modify({ currency });
+  }
+
+  async updateAccount(id: string, update: Partial<Account>): Promise<void> {
+    await db.accounts.update(id, update);
+  }
+
+  async deleteMultiplePayees(ids: string[]): Promise<void> {
+    await db.vendors.bulkDelete(ids);
+  }
+
   async mergePayees(
     targetName: string,
     sourceNames: string[],
@@ -434,6 +606,10 @@ export class LocalDataProvider implements DataProvider {
     return await db.accounts.where("user_id").equals(ledgerId).toArray();
   }
 
+  async getAccountById(id: string): Promise<Account | undefined> {
+    return await db.accounts.get(id);
+  }
+
   // Categories
   async ensureCategoryExists(
     rawName: string,
@@ -487,6 +663,188 @@ export class LocalDataProvider implements DataProvider {
 
   async getUserCategories(ledgerId: string): Promise<Category[]> {
     return await db.categories.where("user_id").equals(ledgerId).sortBy("name");
+  }
+
+  async getCategoryById(id: string): Promise<Category | undefined> {
+    return await db.categories.get(id);
+  }
+
+  async renameCategory(
+    ledgerId: string,
+    categoryId: string,
+    newName: string,
+  ): Promise<void> {
+    const category = await db.categories.get(categoryId);
+    if (!category) throw new Error(`Category "${categoryId}" was not found`);
+    const oldName = category.name;
+    if (oldName === newName) return;
+
+    const clash = await db.categories
+      .where("[user_id+name]")
+      .equals([ledgerId, newName])
+      .first();
+    if (clash && clash.id !== categoryId) {
+      throw new DataProviderConflictError(
+        `A category named "${newName}" already exists`,
+      );
+    }
+
+    await db.categories.update(categoryId, { name: newName });
+    await db.transactions
+      .where("category")
+      .equals(oldName)
+      .and((transaction) => transaction.user_id === ledgerId)
+      .modify({ category: newName });
+    await db.scheduled_transactions
+      .where("user_id")
+      .equals(ledgerId)
+      .and((scheduled) => scheduled.category === oldName)
+      .modify({ category: newName });
+    await db.budgets
+      .where("user_id")
+      .equals(ledgerId)
+      .and((budget) => budget.category_id === categoryId)
+      .modify({ category_name: newName });
+  }
+
+  async updateSubCategoryName(
+    categoryId: string,
+    categoryName: string,
+    oldName: string,
+    newName: string,
+    ledgerId?: string,
+  ): Promise<void> {
+    await db.sub_categories
+      .where("category_id")
+      .equals(categoryId)
+      .and((subCategory) => subCategory.name === oldName)
+      .modify({ name: newName });
+
+    let transactions = db.transactions
+      .where("category")
+      .equals(categoryName)
+      .and((transaction) => transaction.sub_category === oldName);
+    if (ledgerId) {
+      transactions = transactions.and(
+        (transaction) => transaction.user_id === ledgerId,
+      );
+    }
+    await transactions.modify({ sub_category: newName });
+  }
+
+  async deleteSubCategoryReferences(
+    categoryId: string,
+    categoryName: string,
+    subCategoryName: string,
+    ledgerId?: string,
+  ): Promise<void> {
+    await db.sub_categories
+      .where("category_id")
+      .equals(categoryId)
+      .and((subCategory) => subCategory.name === subCategoryName)
+      .delete();
+
+    let transactions = db.transactions
+      .where("category")
+      .equals(categoryName)
+      .and((transaction) => transaction.sub_category === subCategoryName);
+    if (ledgerId) {
+      transactions = transactions.and(
+        (transaction) => transaction.user_id === ledgerId,
+      );
+    }
+    await transactions.modify({ sub_category: null });
+  }
+
+  async renameSubCategory(
+    ledgerId: string,
+    categoryId: string,
+    subCategoryId: string,
+    newName: string,
+  ): Promise<void> {
+    const [category, subCategory] = await Promise.all([
+      db.categories.get(categoryId),
+      db.sub_categories.get(subCategoryId),
+    ]);
+    if (!category || !subCategory) {
+      throw new Error(`Sub-category "${subCategoryId}" was not found`);
+    }
+    const oldName = subCategory.name;
+    if (oldName === newName) return;
+
+    const clash = await db.sub_categories
+      .where("category_id")
+      .equals(categoryId)
+      .and((item) => item.name === newName && item.id !== subCategoryId)
+      .first();
+    if (clash) {
+      throw new DataProviderConflictError(
+        `Category "${category.name}" already has a sub-category named "${newName}"`,
+      );
+    }
+
+    await db.sub_categories.update(subCategoryId, { name: newName });
+    await db.transactions
+      .where("category")
+      .equals(category.name)
+      .and(
+        (transaction) =>
+          transaction.user_id === ledgerId &&
+          transaction.sub_category === oldName,
+      )
+      .modify({ sub_category: newName });
+    await db.scheduled_transactions
+      .where("user_id")
+      .equals(ledgerId)
+      .and(
+        (scheduled) =>
+          scheduled.category === category.name &&
+          scheduled.sub_category === oldName,
+      )
+      .modify({ sub_category: newName });
+    await db.budgets
+      .where("user_id")
+      .equals(ledgerId)
+      .and((budget) => budget.sub_category_id === subCategoryId)
+      .modify({ sub_category_name: newName });
+  }
+
+  async deleteSubCategory(
+    ledgerId: string,
+    categoryId: string,
+    subCategoryId: string,
+  ): Promise<void> {
+    const [category, subCategory] = await Promise.all([
+      db.categories.get(categoryId),
+      db.sub_categories.get(subCategoryId),
+    ]);
+    if (!category || !subCategory) return;
+
+    await db.sub_categories.delete(subCategoryId);
+    await db.transactions
+      .where("category")
+      .equals(category.name)
+      .and(
+        (transaction) =>
+          transaction.user_id === ledgerId &&
+          transaction.sub_category === subCategory.name,
+      )
+      .modify({ sub_category: null });
+    await db.scheduled_transactions
+      .where("user_id")
+      .equals(ledgerId)
+      .and(
+        (scheduled) =>
+          scheduled.category === category.name &&
+          scheduled.sub_category === subCategory.name,
+      )
+      .modify({ sub_category: null });
+    const budgetIds = await db.budgets
+      .where("user_id")
+      .equals(ledgerId)
+      .and((budget) => budget.sub_category_id === subCategoryId)
+      .primaryKeys();
+    await db.budgets.bulkDelete(budgetIds);
   }
 
   async getSubCategories(ledgerId: string): Promise<SubCategory[]> {
@@ -585,6 +943,10 @@ export class LocalDataProvider implements DataProvider {
     );
   }
 
+  async deleteMultipleCategories(ids: string[]): Promise<void> {
+    await db.categories.bulkDelete(ids);
+  }
+
   // Budgets
   async getBudgetsWithSpending(ledgerId: string): Promise<Budget[]> {
     const budgets = await db.budgets
@@ -617,8 +979,12 @@ export class LocalDataProvider implements DataProvider {
   }
 
   // Maintenance
-  async linkTransactionsAsTransfer(id1: string, id2: string): Promise<void> {
-    const transferId = uuidv4();
+  async linkTransactionsAsTransfer(
+    id1: string,
+    id2: string,
+    requestedTransferId?: string,
+  ): Promise<void> {
+    const transferId = requestedTransferId || uuidv4();
     await db.transaction("rw", [db.transactions, db.categories], async () => {
       const t1 = await db.transactions.get(id1);
       const t2 = await db.transactions.get(id2);
@@ -965,5 +1331,35 @@ export class LocalDataProvider implements DataProvider {
         await db.ai_providers.put({ ...p, isDefault: p.id === id });
       }
     });
+  }
+
+  async getBackupConfigs(): Promise<BackupConfig[]> {
+    return await db.backup_configs.toArray();
+  }
+
+  async getDueBackupConfigs(through: string): Promise<BackupConfig[]> {
+    return await db.backup_configs
+      .where("nextBackup")
+      .belowOrEqual(through)
+      .toArray();
+  }
+
+  async getBackupConfig(id: string): Promise<BackupConfig | undefined> {
+    return await db.backup_configs.get(id);
+  }
+
+  async addBackupConfig(config: BackupConfig): Promise<void> {
+    await db.backup_configs.add(config);
+  }
+
+  async updateBackupConfig(
+    id: string,
+    update: Partial<BackupConfig>,
+  ): Promise<void> {
+    await db.backup_configs.update(id, update);
+  }
+
+  async deleteBackupConfig(id: string): Promise<void> {
+    await db.backup_configs.delete(id);
   }
 }

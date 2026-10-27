@@ -125,7 +125,12 @@ export const categoryRoutes: RouteDef[] = [
     handler: async (ctx) => {
       const { category, subs } = await findCategory(ctx);
       const { name } = parse(nameSchema, ctx.body);
-      await renameCategory(ctx.params.ledgerId, category, name);
+      await renameCategory(
+        ctx.services.dataProvider,
+        ctx.params.ledgerId,
+        category,
+        name,
+      );
       return json(present({ ...category, name }, subs));
     },
   },
@@ -177,7 +182,13 @@ export const categoryRoutes: RouteDef[] = [
       const sub = subs.find((s) => s.id === ctx.params.subCategoryId);
       if (!sub) throw notFound(`Sub-category "${ctx.params.subCategoryId}"`);
       const { name } = parse(nameSchema, ctx.body);
-      await renameSubCategory(ctx.params.ledgerId, category, sub, name);
+      await renameSubCategory(
+        ctx.services.dataProvider,
+        ctx.params.ledgerId,
+        category,
+        sub,
+        name,
+      );
       return json({ ...sub, name });
     },
   },
@@ -189,7 +200,12 @@ export const categoryRoutes: RouteDef[] = [
       const { category, subs } = await findCategory(ctx);
       const sub = subs.find((s) => s.id === ctx.params.subCategoryId);
       if (!sub) throw notFound(`Sub-category "${ctx.params.subCategoryId}"`);
-      await deleteSubCategory(ctx.params.ledgerId, category, sub);
+      await deleteSubCategory(
+        ctx.services.dataProvider,
+        ctx.params.ledgerId,
+        category,
+        sub,
+      );
       return noContent();
     },
   },

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/utils/toast";
-import { db } from "@/lib/dexieDB";
+import { useDataProvider } from "@/context/DataProviderContext";
 
 interface UseEntityManagementProps<T> {
   entityName: string;
@@ -24,6 +24,7 @@ export const useEntityManagement = <T extends { id: string; name: string }>({
   customDeleteHandler,
 }: UseEntityManagementProps<T>) => {
   const queryClient = useQueryClient();
+  const dataProvider = useDataProvider();
 
   // State Management
   const [searchTerm, setSearchTerm] = React.useState("");
@@ -51,12 +52,12 @@ export const useEntityManagement = <T extends { id: string; name: string }>({
       const tableKey = queryKey[0];
 
       if (tableKey === "vendors") {
-        await db.vendors.bulkDelete(ids);
+        await dataProvider.deleteMultiplePayees(ids);
         // Also delete associated accounts if is_account?
         // Supabase RPC likely handled cascading. Dexie doesn't cascade by default.
         // For now, simple delete.
       } else if (tableKey === "categories") {
-        await db.categories.bulkDelete(ids);
+        await dataProvider.deleteMultipleCategories(ids);
       }
     },
     onSuccess: async () => {

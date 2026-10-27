@@ -11,10 +11,12 @@ import { useMutation } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/utils/toast";
 import VendorDeduplicationDialog from "@/components/management/VendorDeduplicationDialog";
 import CleanupEntitiesDialog from "@/components/management/CleanupEntitiesDialog";
+import { useDataProvider } from "@/context/DataProviderContext";
 
 const VendorsPage = () => {
   const { vendors, isLoadingVendors, invalidateAllData } = useTransactions();
   const managementProps = usePayeeManagement(false);
+  const dataProvider = useDataProvider();
 
   const [editingVendorId, setEditingVendorId] = React.useState<string | null>(
     null,
@@ -30,9 +32,7 @@ const VendorsPage = () => {
       vendorId: string;
       newName: string;
     }) => {
-      // Similar pragmatic fix as Categories.tsx
-      const { db } = await import("@/lib/dexieDB");
-      await db.vendors.update(vendorId, { name: newName.trim() });
+      await dataProvider.updateVendorName(vendorId, newName.trim());
     },
     onSuccess: async () => {
       showSuccess("Vendor name updated successfully!");
